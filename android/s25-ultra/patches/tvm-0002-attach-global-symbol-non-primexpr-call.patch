@@ -1,0 +1,15 @@
+diff --git a/src/relax/transform/attach_global_symbol.cc b/src/relax/transform/attach_global_symbol.cc
+index 5657549..3c9b615 100644
+--- a/src/relax/transform/attach_global_symbol.cc
++++ b/src/relax/transform/attach_global_symbol.cc
+@@ -67,7 +67,9 @@ struct TirxGvarMutator : tirx::StmtExprMutator {
+         call.CopyOnWrite()->op = new_gvar.value();
+       }
+     }
+-    return call.as_or_throw<PrimExpr>();
++    // Calls in TIR may carry a non-PrimExpr type (e.g. tirx.TensorType);
++    // forcing PrimExpr here threw whenever a system_lib_prefix renamed callees.
++    return Expr(call);
+   }
+ };
+ 

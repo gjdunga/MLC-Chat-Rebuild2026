@@ -15,13 +15,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Chat
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -143,7 +143,7 @@ fun ModelView(
                     .wrapContentHeight()
                     .weight(8f)
             )
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier
                     .height(20.dp)
                     .width(1.dp)
@@ -183,7 +183,7 @@ fun ModelView(
                         .weight(1f)
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.Chat,
+                        imageVector = Icons.AutoMirrored.Outlined.Chat,
                         contentDescription = "start chatting",
                     )
                 }
@@ -218,7 +218,10 @@ fun ModelView(
             }
         }
         LinearProgressIndicator(
-            progress = modelState.progress.value.toFloat() / modelState.total.value,
+            progress = {
+                val total = modelState.total.intValue
+                if (total > 0) modelState.progress.intValue.toFloat() / total else 0f
+            },
             modifier = Modifier.fillMaxWidth()
         )
         if (isDeletingModel) {

@@ -1,42 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="ai.mlc.mlcchat">
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Only permission requested: model weights are fetched over HTTPS.
+         Not requested on purpose:
+         - READ_MEDIA_IMAGES / READ_EXTERNAL_STORAGE: images come from the
+           system Photo Picker, which grants per-item URI access.
+         - CAMERA: photos are taken by the system camera app through
+           ACTION_IMAGE_CAPTURE into a FileProvider URI we own.
+         - WRITE_EXTERNAL_STORAGE: models live in getExternalFilesDir(),
+           which needs no permission on API 19+. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32"
-        tools:ignore="ScopedStorage" />
+
+    <!-- Libraries pulled in transitively must not add permissions silently. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <!-- Camera capture is optional (delegated to the camera app). -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
+        android:fullBackupContent="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true"
         android:icon="@drawable/mlc_logo_108"
         android:label="@string/app_name"
         android:roundIcon="@drawable/mlc_logo_108"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MLCChat"
-        tools:targetApi="31">
+        android:theme="@style/Theme.MLCChat">
         <uses-native-library
             android:name="libOpenCL.so"
-            android:required="false"/>
-
+            android:required="false" />
         <uses-native-library
             android:name="libOpenCL-pixel.so"
             android:required="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
-            android:theme="@android:style/Theme.Material.NoActionBar">
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.MLCChat">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Not exported; the camera app gets a one-shot write grant on a
+             single URI via the capture intent. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

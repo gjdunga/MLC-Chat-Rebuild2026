@@ -294,6 +294,12 @@ def build_android_binding(mlc_llm_source_dir: Path, output: Path) -> None:
     logger.info('Copying "%s" to "%s"', src_path, dst_path)
     shutil.copy(src_path, dst_path)
 
+    # R8 keep rules for JNI-reached classes; without them a minified release
+    # build strips org.apache.tvm.* and crashes when the native runtime calls back.
+    rules_path = mlc4j_path / "consumer-rules.pro"
+    if rules_path.exists():
+        shutil.copy(str(rules_path), str(lib_path / "consumer-rules.pro"))
+
     src_path = str(Path("build") / "output")
     dst_path = str(lib_path / "output")
     logger.info('Copying "%s" to "%s"', src_path, dst_path)

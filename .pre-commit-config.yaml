@@ -13,6 +13,9 @@
 # See https://github.com/pre-commit/pre-commit
 default_install_hook_types:
   - pre-commit
+# Unified diffs need their exact whitespace; the fixers below would corrupt them.
+exclude: ^android/s25-ultra/patches/.*\.patch$
+
 repos:
   # ---------- General file checks ----------
   - repo: https://github.com/pre-commit/pre-commit-hooks

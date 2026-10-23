@@ -8,7 +8,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Environment
 import android.widget.Toast
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.graphics.scale
 import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -44,7 +46,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         emptyList<ModelRecord>().toMutableList()
     )
     private val application = getApplication<Application>()
-    private val appDirFile = application.getExternalFilesDir("")
+    private val appDirFile = requireNotNull(application.getExternalFilesDir("")) {
+        "External files dir unavailable"
+    }
     private val gson = Gson()
     private val modelIdSet = emptySet<String>().toMutableSet()
 
@@ -104,7 +108,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         modelSampleList.clear()
         for (modelRecord in appConfig.modelList) {
             appConfig.modelLibs.add(modelRecord.modelLib)
-            val modelDirFile = File(appDirFile, modelRecord.modelId)
+            val modelDirFile = try {
+                SafeIO.child(appDirFile, modelRecord.modelId)
+            } catch (e: IllegalArgumentException) {
+                issueAlert(e.message ?: "Invalid model id")
+                continue
+            }
             val modelConfigFile = File(modelDirFile, ModelConfigFilename)
             if (modelConfigFile.exists()) {
                 val modelConfigString = modelConfigFile.readText()
@@ -137,7 +146,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             ModelState(
                 modelConfig,
                 modelUrl + if (modelUrl.endsWith("/")) "" else "/",
-                File(appDirFile, modelConfig.modelId)
+                SafeIO.child(appDirFile, modelConfig.modelId)
             )
         )
         if (!isBuiltin) {
@@ -155,7 +164,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun deleteModel(modelId: String) {
-        val modelDirFile = File(appDirFile, modelId)
+        val modelDirFile = SafeIO.child(appDirFile, modelId)
         modelDirFile.deleteRecursively()
         require(!modelDirFile.exists())
         modelIdSet.remove(modelId)
@@ -187,7 +196,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     application.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
                     tempId
                 )
-                url.openStream().use {
+                SafeIO.openHttps(url).use {
                     Channels.newChannel(it).use { src ->
                         FileOutputStream(tempFile).use { fileOutputStream ->
                             fileOutputStream.channel.transferFrom(src, 0, Long.MAX_VALUE)
@@ -211,7 +220,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                             tempFile.delete()
                             return@launch
                         }
-                        val modelDirFile = File(appDirFile, modelConfig.modelId)
+                        val modelDirFile = SafeIO.child(appDirFile, modelConfig.modelId)
                         val modelConfigFile = File(modelDirFile, ModelConfigFilename)
                         tempFile.copyTo(modelConfigFile, overwrite = true)
                         tempFile.delete()
@@ -239,8 +248,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         var modelInitState = mutableStateOf(ModelInitState.Initializing)
         private var paramsConfig = ParamsConfig(emptyList())
-        val progress = mutableStateOf(0)
-        val total = mutableStateOf(1)
+        val progress = mutableIntStateOf(0)
+        val total = mutableIntStateOf(1)
         val id: UUID = UUID.randomUUID()
         private val remainingTasks = emptySet<DownloadTask>().toMutableSet()
         private val downloadingTasks = emptySet<DownloadTask>().toMutableSet()
@@ -271,23 +280,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         private fun downloadParamsConfig() {
             thread(start = true) {
-                val url = URL("${modelUrl}${ModelUrlSuffix}${ParamsConfigFilename}")
-                val tempId = UUID.randomUUID().toString()
-                val tempFile = File(modelDirFile, tempId)
-                url.openStream().use {
-                    Channels.newChannel(it).use { src ->
-                        FileOutputStream(tempFile).use { fileOutputStream ->
-                            fileOutputStream.channel.transferFrom(src, 0, Long.MAX_VALUE)
+                val tempFile = File(modelDirFile, UUID.randomUUID().toString())
+                try {
+                    val url = URL("${modelUrl}${ModelUrlSuffix}${ParamsConfigFilename}")
+                    SafeIO.openHttps(url).use {
+                        Channels.newChannel(it).use { src ->
+                            FileOutputStream(tempFile).use { fileOutputStream ->
+                                fileOutputStream.channel.transferFrom(src, 0, Long.MAX_VALUE)
+                            }
                         }
                     }
-                }
-                require(tempFile.exists())
-                val paramsConfigFile = File(modelDirFile, ParamsConfigFilename)
-                tempFile.renameTo(paramsConfigFile)
-                require(paramsConfigFile.exists())
-                viewModelScope.launch {
-                    loadParamsConfig()
-                    switchToIndexing()
+                    require(tempFile.exists())
+                    val paramsConfigFile = File(modelDirFile, ParamsConfigFilename)
+                    tempFile.renameTo(paramsConfigFile)
+                    require(paramsConfigFile.exists())
+                    viewModelScope.launch {
+                        loadParamsConfig()
+                        switchToIndexing()
+                    }
+                } catch (e: Exception) {
+                    // An uncaught exception on this thread would kill the app.
+                    tempFile.delete()
+                    viewModelScope.launch {
+                        issueAlert("Download params config failed: ${e.localizedMessage}")
+                    }
                 }
             }
         }
@@ -352,35 +368,44 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         private fun switchToIndexing() {
             modelInitState.value = ModelInitState.Indexing
-            progress.value = 0
-            total.value = modelConfig.tokenizerFiles.size + paramsConfig.paramsRecords.size
-            for (tokenizerFilename in modelConfig.tokenizerFiles) {
-                val file = File(modelDirFile, tokenizerFilename)
-                if (file.exists()) {
-                    ++progress.value
-                } else {
-                    remainingTasks.add(
-                        DownloadTask(
-                            URL("${modelUrl}${ModelUrlSuffix}${tokenizerFilename}"),
-                            file
+            progress.intValue = 0
+            total.intValue = modelConfig.tokenizerFiles.size + paramsConfig.paramsRecords.size
+            try {
+                for (tokenizerFilename in modelConfig.tokenizerFiles) {
+                    val file = SafeIO.child(modelDirFile, tokenizerFilename)
+                    if (file.exists()) {
+                        ++progress.intValue
+                    } else {
+                        remainingTasks.add(
+                            DownloadTask(
+                                URL("${modelUrl}${ModelUrlSuffix}${tokenizerFilename}"),
+                                file
+                            )
                         )
-                    )
+                    }
                 }
-            }
-            for (paramsRecord in paramsConfig.paramsRecords) {
-                val file = File(modelDirFile, paramsRecord.dataPath)
-                if (file.exists()) {
-                    ++progress.value
-                } else {
-                    remainingTasks.add(
-                        DownloadTask(
-                            URL("${modelUrl}${ModelUrlSuffix}${paramsRecord.dataPath}"),
-                            file
+                for (paramsRecord in paramsConfig.paramsRecords) {
+                    val file = SafeIO.child(modelDirFile, paramsRecord.dataPath)
+                    if (file.exists()) {
+                        ++progress.intValue
+                    } else {
+                        remainingTasks.add(
+                            DownloadTask(
+                                URL("${modelUrl}${ModelUrlSuffix}${paramsRecord.dataPath}"),
+                                file
+                            )
                         )
-                    )
+                    }
                 }
+            } catch (e: IllegalArgumentException) {
+                // Untrusted file list: download nothing, leave the model
+                // paused so the user can delete it.
+                remainingTasks.clear()
+                issueAlert(e.message ?: "Invalid model file list")
+                switchToPaused()
+                return
             }
-            if (progress.value < total.value) {
+            if (progress.intValue < total.intValue) {
                 switchToPaused()
             } else {
                 switchToFinished()
@@ -405,18 +430,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             thread(start = true) {
                 val tempId = UUID.randomUUID().toString()
                 val tempFile = File(modelDirFile, tempId)
-                downloadTask.url.openStream().use {
-                    Channels.newChannel(it).use { src ->
-                        FileOutputStream(tempFile).use { fileOutputStream ->
-                            fileOutputStream.channel.transferFrom(src, 0, Long.MAX_VALUE)
+                try {
+                    SafeIO.openHttps(downloadTask.url).use {
+                        Channels.newChannel(it).use { src ->
+                            FileOutputStream(tempFile).use { fileOutputStream ->
+                                fileOutputStream.channel.transferFrom(src, 0, Long.MAX_VALUE)
+                            }
                         }
                     }
+                    require(tempFile.exists())
+                    tempFile.renameTo(downloadTask.file)
+                    require(downloadTask.file.exists())
+                    viewModelScope.launch {
+                        handleFinishDownload(downloadTask)
+                    }
+                } catch (e: Exception) {
+                    // Previously an uncaught exception here crashed the app on
+                    // any network error. Keep the task queued for a retry.
+                    tempFile.delete()
+                    viewModelScope.launch {
+                        handleFailedDownload(downloadTask, e)
+                    }
                 }
-                require(tempFile.exists())
-                tempFile.renameTo(downloadTask.file)
-                require(downloadTask.file.exists())
-                viewModelScope.launch {
-                    handleFinishDownload(downloadTask)
+            }
+        }
+
+        private fun handleFailedDownload(downloadTask: DownloadTask, e: Exception) {
+            downloadingTasks.remove(downloadTask)
+            issueAlert("Download failed: ${e.localizedMessage}")
+            if (modelInitState.value == ModelInitState.Downloading) {
+                switchToPausing()
+            }
+            if (downloadingTasks.isEmpty()) {
+                when (modelInitState.value) {
+                    ModelInitState.Pausing -> switchToPaused()
+                    ModelInitState.Clearing -> clear()
+                    ModelInitState.Deleting -> delete()
+                    else -> {}
                 }
             }
         }
@@ -434,7 +484,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private fun handleFinishDownload(downloadTask: DownloadTask) {
             remainingTasks.remove(downloadTask)
             downloadingTasks.remove(downloadTask)
-            ++progress.value
+            ++progress.intValue
             require(
                 modelInitState.value == ModelInitState.Downloading ||
                         modelInitState.value == ModelInitState.Pausing ||
@@ -684,7 +734,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         fun bitmapToURL(bm: Bitmap): String {
             val targetSize = 336
-            val scaledBitmap = Bitmap.createScaledBitmap(bm, targetSize, targetSize, true)
+            val scaledBitmap = bm.scale(targetSize, targetSize)
 
             val outputStream = ByteArrayOutputStream()
             scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)

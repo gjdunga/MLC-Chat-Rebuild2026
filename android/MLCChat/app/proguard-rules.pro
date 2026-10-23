@@ -1,21 +1,15 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Release builds run R8 (minify + resource shrinking).
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Gson reads/writes these via reflection (mlc-app-config.json,
+# mlc-chat-config.json, tensor-cache.json). Keep field names and constructors.
+-keepclassmembers,allowobfuscation class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+-keep class ai.mlc.mlcchat.AppConfig { *; }
+-keep class ai.mlc.mlcchat.ModelRecord { *; }
+-keep class ai.mlc.mlcchat.ModelConfig { *; }
+-keep class ai.mlc.mlcchat.ParamsRecord { *; }
+-keep class ai.mlc.mlcchat.ParamsConfig { *; }
+-keepattributes Signature, *Annotation*, EnclosingMethod, InnerClasses
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# JNI and engine classes are kept by mlc4j's consumer-rules.pro.

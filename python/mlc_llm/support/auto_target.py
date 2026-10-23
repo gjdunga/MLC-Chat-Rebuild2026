@@ -394,11 +394,11 @@ def detect_system_lib_prefix(
     prefix_hint : str
         The hint for the system lib prefix.
     """
-    if prefix_hint == "auto" and (
-        target_hint.startswith("iphone")
-        or target_hint.startswith("macabi")
-        or target_hint.startswith("android")
-    ):
+    # Presets such as "android:adreno" are mobile targets too; matching only the
+    # bare "android" here silently replaced an explicit prefix with "", so two
+    # model libraries in one APK exported colliding symbols.
+    is_mobile = target_hint.split(":", 1)[0] in ["iphone", "macabi", "android"]
+    if prefix_hint == "auto" and is_mobile:
         prefix = f"{model_name}_{quantization}_".replace("-", "_")
         logger.warning(
             "%s is automatically picked from the filename, %s, this allows us to use the filename "
@@ -408,7 +408,7 @@ def detect_system_lib_prefix(
             bold(prefix),
         )
         return prefix
-    if target_hint not in ["iphone", "macabi", "android"]:
+    if not is_mobile:
         return ""
     return prefix_hint
 

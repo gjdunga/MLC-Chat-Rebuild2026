@@ -1,7 +1,7 @@
 package ai.mlc.mlcchat
 
+import androidx.core.graphics.scale
 import android.app.Activity
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -25,11 +25,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.Divider
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -81,7 +81,7 @@ fun ChatView(
                     enabled = chatState.interruptable()
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "back home page",
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
@@ -122,7 +122,7 @@ fun ChatView(
                     .wrapContentHeight()
                     .padding(top = 5.dp)
             )
-            Divider(thickness = 1.dp, modifier = Modifier.padding(vertical = 5.dp))
+            HorizontalDivider(thickness = 1.dp, modifier = Modifier.padding(vertical = 5.dp))
             LazyColumn(
                 modifier = Modifier.weight(9f),
                 verticalArrangement = Arrangement.spacedBy(5.dp, alignment = Alignment.Bottom),
@@ -141,7 +141,7 @@ fun ChatView(
                     // place holder item for scrolling to the bottom
                 }
             }
-            Divider(thickness = 1.dp, modifier = Modifier.padding(top = 5.dp))
+            HorizontalDivider(thickness = 1.dp, modifier = Modifier.padding(top = 5.dp))
             SendMessageView(chatState = chatState, activity)
         }
     }
@@ -219,7 +219,7 @@ fun MessageView(messageData: MessageData, activity: Activity?) {
                             BitmapFactory.decodeStream(input)
                         }
                     }
-                    val displayBitmap = bitmap?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
+                    val displayBitmap = bitmap?.scale(224, 224)
                     if (displayBitmap != null) {
                         Image(
                             displayBitmap.asImageBitmap(),
@@ -320,7 +320,7 @@ fun SendMessageView(chatState: AppViewModel.ChatState, activity: Activity) {
             enabled = (text != "" && chatState.chatable())
         ) {
             Icon(
-                imageVector = Icons.Filled.Send,
+                imageVector = Icons.AutoMirrored.Filled.Send,
                 contentDescription = "send message",
             )
         }
