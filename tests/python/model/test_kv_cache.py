@@ -1,0 +1,143 @@
+import tvm
+from tvm import tirx
+from tvm.relax.frontend.nn import core, modules, spec
+from tvm.script import ir as I
+from tvm.script import relax as R
+from tvm.script import tirx as T
+
+from mlc_llm.nn.kv_cache import PagedKVCache, RopeMode
+
+# mypy: disable-error-code="attr-defined"
+
+
+def test_nn_module_paged_kv_cache():
+    max_batch_size_1 = I.dynamic("max_batch_size", dtype="int64")
+    max_total_seq_len_1 = I.dynamic("max_total_seq_len", dtype="int64")
+    page_size_1 = I.dynamic("page_size", dtype="int64")
+    prefill_chunk_size_1 = I.dynamic("prefill_chunk_size", dtype="int64")
+    support_sliding_window_1 = I.dynamic("support_sliding_window", dtype="int64")
+
+    @I.ir_module
+    class Module:
+        @R.function
+        def create_paged_kv_cache(
+            max_batch_size: R.Shape([max_batch_size_1]),
+            max_total_seq_len: R.Shape([max_total_seq_len_1]),
+            prefill_chunk_size: R.Shape([prefill_chunk_size_1]),
+            page_size: R.Shape([page_size_1]),
+            support_sliding_window: R.Shape([support_sliding_window_1]),
+        ) -> R.Any:
+            R.func_attr({"num_input": 5})
+            with R.dataflow():
+                paged_kv_cache: R.Any = R.call_pure_packed(
+                    "mlc.create_paged_kv_cache_generic",
+                    R.str("mha"),
+                    R.shape(
+                        [
+                            max_batch_size_1,
+                            max_total_seq_len_1,
+                            prefill_chunk_size_1,
+                            page_size_1,
+                            support_sliding_window_1,
+                            1024,
+                        ]
+                    ),
+                    R.shape([0, 32]),
+                    32,
+                    32,
+                    32,
+                    128,
+                    128,
+                    0,
+                    0,
+                    1,
+                    1,
+                    10000,
+                    R.str("{}"),
+                    0,
+                    128,
+                    0,
+                    T.dtype("float16"),
+                    ty_args=(R.Any,),
+                )
+                gv1: R.Any = paged_kv_cache
+                R.output(gv1)
+            return gv1
+
+        @R.function
+        def forward(cache: R.Any, qkv: R.Tensor((1, 100, 96, 128), dtype="float16")) -> R.Tensor(
+            (1, 100, 32, 128), dtype="float16"
+        ):
+            R.func_attr({"num_input": 2})
+            with R.dataflow():
+                reshape: R.Tensor((100, 96, 128), dtype="float16") = R.reshape(
+                    qkv, R.shape([100, 96, 128])
+                )
+                lv = R.call_dps_packed(
+                    "vm.builtin.attention_kv_cache_attention_with_fused_qkv",
+                    (cache, 0, T.float64(0.088388347648318447), reshape),
+                    out_ty=R.Tensor((100, 32, 128), dtype="float16"),
+                )
+                reshape1: R.Tensor((1, 100, 32, 128), dtype="float16") = R.reshape(
+                    lv, R.shape([1, 100, 32, 128])
+                )
+                gv: R.Tensor((1, 100, 32, 128), dtype="float16") = reshape1
+                R.output(gv)
+            return gv
+
+    class PagedKVCacheTest(modules.Module):
+        def forward(
+            self,
+            cache: PagedKVCache,
+            qkv: core.Tensor,
+        ) -> core.Tensor:
+            return cache.attention_with_fused_qkv(0, qkv, num_qo_heads=32, sm_scale=128**-0.5)
+
+        def create_paged_kv_cache(
+            self,
+            max_batch_size: tirx.Var,
+            max_total_seq_len: tirx.Var,
+            prefill_chunk_size: tirx.Var,
+            page_size: tirx.Var,
+            support_sliding_window: tirx.Var,
+        ) -> PagedKVCache:
+            return PagedKVCache.create_generic(
+                attn_kind="mha",
+                max_batch_size=max_batch_size,
+                max_total_seq_len=max_total_seq_len,
+                prefill_chunk_size=prefill_chunk_size,
+                page_size=page_size,
+                support_sliding_window=support_sliding_window,
+                num_hidden_layers=32,
+                num_attention_heads=32,
+                num_key_value_heads=32,
+                qk_head_dim=128,
+                v_head_dim=128,
+                rope_mode=RopeMode.NORMAL,
+                rope_scale=1,
+                rope_theta=10000,
+                rotary_dim=128,
+                dtype="float16",
+            )
+
+    export_results = PagedKVCacheTest().export_tvm(
+        spec={
+            "forward": {
+                "cache": spec.Object(object_type=PagedKVCache),
+                "qkv": spec.Tensor((1, 100, 96, 128), "float16"),
+            },
+            "create_paged_kv_cache": {
+                "max_batch_size": int,
+                "max_total_seq_len": int,
+                "prefill_chunk_size": int,
+                "page_size": int,
+                "support_sliding_window": int,
+            },
+        },
+    )
+    tvm_mod = export_results[0]
+    tvm.ir.assert_structural_equal(tvm_mod, Module, True)
+
+
+if __name__ == "__main__":
+    test_nn_module_paged_kv_cache()
