@@ -8,6 +8,8 @@ on:
 jobs:
   test_linux:
     name: Deploy Docs
+    # Publishes to upstream's GitHub Pages with upstream's token; skip in forks/rebuilds.
+    if: github.repository == 'mlc-ai/mlc-llm'
     runs-on: ubuntu-latest
 
     steps:
