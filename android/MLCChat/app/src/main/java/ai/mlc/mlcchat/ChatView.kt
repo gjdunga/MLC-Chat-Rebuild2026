@@ -1,7 +1,7 @@
 package ai.mlc.mlcchat
 
+import androidx.core.graphics.scale
 import android.app.Activity
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -219,7 +219,7 @@ fun MessageView(messageData: MessageData, activity: Activity?) {
                             BitmapFactory.decodeStream(input)
                         }
                     }
-                    val displayBitmap = bitmap?.let { Bitmap.createScaledBitmap(it, 224, 224, true) }
+                    val displayBitmap = bitmap?.scale(224, 224)
                     if (displayBitmap != null) {
                         Image(
                             displayBitmap.asImageBitmap(),

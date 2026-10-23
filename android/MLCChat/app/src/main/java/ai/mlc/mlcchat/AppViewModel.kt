@@ -8,7 +8,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Environment
 import android.widget.Toast
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.graphics.scale
 import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -246,8 +248,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         var modelInitState = mutableStateOf(ModelInitState.Initializing)
         private var paramsConfig = ParamsConfig(emptyList())
-        val progress = mutableStateOf(0)
-        val total = mutableStateOf(1)
+        val progress = mutableIntStateOf(0)
+        val total = mutableIntStateOf(1)
         val id: UUID = UUID.randomUUID()
         private val remainingTasks = emptySet<DownloadTask>().toMutableSet()
         private val downloadingTasks = emptySet<DownloadTask>().toMutableSet()
@@ -732,7 +734,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         fun bitmapToURL(bm: Bitmap): String {
             val targetSize = 336
-            val scaledBitmap = Bitmap.createScaledBitmap(bm, targetSize, targetSize, true)
+            val scaledBitmap = bm.scale(targetSize, targetSize)
 
             val outputStream = ByteArrayOutputStream()
             scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
