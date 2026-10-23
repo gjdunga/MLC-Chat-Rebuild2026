@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Models built into the S25 Ultra APK. Each entry gets its own model library",
+    "compiled for android:adreno (Adreno 830), because constants such as",
+    "rope_theta and the context/prefill sizes are baked into the kernels.",
+    "source=hf:   prebuilt MLC weights, downloaded by the app over HTTPS on first use.",
+    "source=convert: converted locally by 20_convert_weights.sh from the original",
+    "             Hugging Face checkpoint and side-loaded (bundle_weight) over adb.",
+    "estimated_vram_bytes is what the app checks before loading; the S25 Ultra",
+    "has 12 GB shared RAM, of which ~5 GB is a safe budget next to One UI."
+  ],
+  "models": [
+    {
+      "model_id": "Qwen3-4B-q4f16_1-MLC",
+      "source": "hf",
+      "model": "HF://mlc-ai/Qwen3-4B-q4f16_1-MLC",
+      "model_lib": "qwen3_4b_q4f16_1_s25",
+      "estimated_vram_bytes": 4500000000,
+      "overrides": { "context_window_size": 8192, "prefill_chunk_size": 256 }
+    },
+    {
+      "model_id": "Huihui-Qwen3-4B-Instruct-2507-abliterated-q4f16_1-MLC",
+      "source": "convert",
+      "hf_repo": "huihui-ai/Huihui-Qwen3-4B-Instruct-2507-abliterated",
+      "quantization": "q4f16_1",
+      "conv_template": "qwen3",
+      "model_lib": "qwen3_4b_2507_abl_q4f16_1_s25",
+      "estimated_vram_bytes": 4500000000,
+      "overrides": { "context_window_size": 8192, "prefill_chunk_size": 256 }
+    }
+  ]
+}

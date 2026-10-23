@@ -10,11 +10,16 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url "https://jitpack.io" }
+        // JitPack builds artifacts from GitHub on demand. Scope it to the one
+        // group that needs it, so no other coordinate can be served from it
+        // (dependency-confusion defense). Pinned by gradle/verification-metadata.xml.
+        exclusiveContent {
+            forRepository { maven { url "https://jitpack.io" } }
+            filter { includeGroup "com.github.jeziellago" }
+        }
     }
 }
 rootProject.name = "MLCChat"
 include ':app'
 include ':mlc4j'
 project(':mlc4j').projectDir = file('dist/lib/mlc4j')
-include ':mlcengineexample'

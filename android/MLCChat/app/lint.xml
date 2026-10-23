@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- S25 build ships arm64-v8a only: the packed TVM runtime is compiled for
+         the phone's SoC, not for ChromeOS x86_64. -->
+    <issue id="ChromeOsAbiSupport" severity="ignore" />
+    <!-- enableOnBackInvokedCallback is ignored below API 33 by design. -->
+    <issue id="UnusedAttribute" severity="ignore" />
+</lint>

@@ -1,22 +1,21 @@
 plugins {
     id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
-    id 'org.jetbrains.kotlin.plugin.serialization' version '1.8.0'
+    id 'org.jetbrains.kotlin.plugin.serialization'
 }
 
 android {
     namespace 'ai.mlc.mlcllm'
-    compileSdk 34
+    compileSdk 37
 
     defaultConfig {
-        minSdk 22
+        minSdk 26
+        // JNI entry points and gson/kotlinx models are reached reflectively
+        // from native code; keep them when the consuming app runs R8.
+        consumerProguardFiles 'consumer-rules.pro'
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
-    }
-    kotlinOptions {
-        jvmTarget = '1.8'
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     sourceSets {
         main {
@@ -27,8 +26,8 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'output', include: ['*.jar'])
-    implementation 'androidx.core:core-ktx:1.9.0'
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.10.0'
-    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3'
+    // Only what the sources import: no AndroidX/Material UI libraries in the
+    // engine module (smaller dependency and attack surface).
+    implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 }
