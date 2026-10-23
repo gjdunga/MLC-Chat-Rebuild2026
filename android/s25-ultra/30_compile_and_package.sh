@@ -19,24 +19,31 @@ mkdir -p "$LIB_DIR" "$CFG_DIR"
 rustup target list --installed | grep -q aarch64-linux-android || {
   echo "ERROR: rust target aarch64-linux-android missing (run 00_bootstrap_ubuntu.sh)" >&2; exit 1; }
 
+# Fields are '|'-separated: with a tab, bash collapses empty fields.
 mapfile -t ROWS < <("$PY" -I - "$MODELS_JSON" <<'PYEOF'
 import json, sys
 for m in json.load(open(sys.argv[1]))["models"]:
     o = m.get("overrides", {})
     ov = ";".join(f"{k}={v}" for k, v in o.items())
-    print("\t".join([m["model_id"], m["source"], m.get("model", ""), m["model_lib"], ov]))
+    print("|".join([m["model_id"], m["source"], m.get("model", ""), m["model_lib"], ov]))
 PYEOF
 )
 
 for row in "${ROWS[@]}"; do
-  IFS=$'\t' read -r model_id source model model_lib overrides <<< "$row"
+  IFS='|' read -r model_id source model model_lib overrides <<< "$row"
   if [ "$source" = "hf" ]; then
     # Compiling needs only the chat config; the app downloads weights later.
     cfg="$CFG_DIR/$model_id"
     mkdir -p "$cfg"
     repo="${model#HF://}"
-    curl -fsSL --proto '=https' -o "$cfg/mlc-chat-config.json" \
+    curl -fsSL --proto '=https' -o "$cfg/mlc-chat-config.json.new" \
       "https://huggingface.co/$repo/resolve/main/mlc-chat-config.json"
+    # Replace only on change, so an unchanged model is not recompiled.
+    if cmp -s "$cfg/mlc-chat-config.json.new" "$cfg/mlc-chat-config.json"; then
+      rm "$cfg/mlc-chat-config.json.new"
+    else
+      mv "$cfg/mlc-chat-config.json.new" "$cfg/mlc-chat-config.json"
+    fi
   else
     cfg="$S25_HOME/weights/$model_id"
     [ -f "$cfg/mlc-chat-config.json" ] || { echo "ERROR: $cfg not converted (run 20_convert_weights.sh)" >&2; exit 1; }

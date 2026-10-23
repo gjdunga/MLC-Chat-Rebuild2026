@@ -10,18 +10,19 @@ source "$(dirname "$0")/env.sh"
 PY="$S25_VENV/bin/python"
 MODELS_JSON="${MODELS_JSON:-$_S25_DIR/s25-models.json}"
 
+# Fields are '|'-separated: with a tab, bash collapses empty fields.
 mapfile -t ROWS < <("$PY" -I - "$MODELS_JSON" <<'PYEOF'
 import json, sys
 for m in json.load(open(sys.argv[1]))["models"]:
     if m.get("source") == "convert":
         o = m.get("overrides", {})
-        print("\t".join([m["model_id"], m["hf_repo"], m["quantization"], m["conv_template"],
+        print("|".join([m["model_id"], m["hf_repo"], m["quantization"], m["conv_template"],
                          str(o.get("context_window_size", 4096)), str(o.get("prefill_chunk_size", 256))]))
 PYEOF
 )
 
 for row in "${ROWS[@]}"; do
-  IFS=$'\t' read -r model_id repo quant conv ctx prefill <<< "$row"
+  IFS='|' read -r model_id repo quant conv ctx prefill <<< "$row"
   out="$S25_HOME/weights/$model_id"
   if [ -f "$out/tensor-cache.json" ] && [ -f "$out/mlc-chat-config.json" ]; then
     echo "== $model_id already converted, skipping (delete $out to redo)"
