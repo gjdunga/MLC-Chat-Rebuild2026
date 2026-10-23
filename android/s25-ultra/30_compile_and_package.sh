@@ -90,6 +90,21 @@ PYEOF
 cd "$APP_DIR"
 "$PY" -m mlc_llm package --package-config mlc-package-config.s25.json --output dist
 
+# `mlc_llm package` writes the laptop's absolute weights path as model_url for
+# bundled models, which would ship your local paths inside the APK. Replace it
+# with an unresolvable HTTPS URL (.invalid is reserved, RFC 2606): bundled
+# weights are side-loaded by 60_install_to_phone.sh, and if a file is missing
+# the app reports a failed download instead of fetching anything.
+"$PY" -I - "$APP_DIR/dist/lib/mlc4j/src/main/assets/mlc-app-config.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]
+cfg = json.load(open(p))
+for m in cfg["model_list"]:
+    if not m.get("model_url", "").startswith("https://"):
+        m["model_url"] = f"https://bundled.invalid/{m['model_id']}"
+json.dump(cfg, open(p, "w"), indent=2)
+PYEOF
+
 so="$APP_DIR/dist/lib/mlc4j/output/arm64-v8a/libtvm4j_runtime_packed.so"
 [ -f "$so" ] || { echo "ERROR: runtime not built: $so" >&2; exit 1; }
 ls -la "$so"

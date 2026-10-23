@@ -17,6 +17,8 @@ def signingValue = { String key, String env ->
 android {
     namespace 'ai.mlc.mlcchat'
     compileSdk 37
+    // Lets AGP find llvm-strip so native debug symbols are removed from the APK.
+    ndkVersion System.getenv('S25_NDK_VERSION') ?: '30.0.16248370'
 
     defaultConfig {
         applicationId "ai.mlc.mlcchat"

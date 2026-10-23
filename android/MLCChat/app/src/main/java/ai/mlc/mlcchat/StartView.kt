@@ -219,8 +219,8 @@ fun ModelView(
         }
         LinearProgressIndicator(
             progress = {
-                val total = modelState.total.value
-                if (total > 0) modelState.progress.value.toFloat() / total else 0f
+                val total = modelState.total.intValue
+                if (total > 0) modelState.progress.intValue.toFloat() / total else 0f
             },
             modifier = Modifier.fillMaxWidth()
         )

@@ -368,13 +368,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
         private fun switchToIndexing() {
             modelInitState.value = ModelInitState.Indexing
-            progress.value = 0
-            total.value = modelConfig.tokenizerFiles.size + paramsConfig.paramsRecords.size
+            progress.intValue = 0
+            total.intValue = modelConfig.tokenizerFiles.size + paramsConfig.paramsRecords.size
             try {
                 for (tokenizerFilename in modelConfig.tokenizerFiles) {
                     val file = SafeIO.child(modelDirFile, tokenizerFilename)
                     if (file.exists()) {
-                        ++progress.value
+                        ++progress.intValue
                     } else {
                         remainingTasks.add(
                             DownloadTask(
@@ -387,7 +387,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 for (paramsRecord in paramsConfig.paramsRecords) {
                     val file = SafeIO.child(modelDirFile, paramsRecord.dataPath)
                     if (file.exists()) {
-                        ++progress.value
+                        ++progress.intValue
                     } else {
                         remainingTasks.add(
                             DownloadTask(
@@ -405,7 +405,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 switchToPaused()
                 return
             }
-            if (progress.value < total.value) {
+            if (progress.intValue < total.intValue) {
                 switchToPaused()
             } else {
                 switchToFinished()
@@ -484,7 +484,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         private fun handleFinishDownload(downloadTask: DownloadTask) {
             remainingTasks.remove(downloadTask)
             downloadingTasks.remove(downloadTask)
-            ++progress.value
+            ++progress.intValue
             require(
                 modelInitState.value == ModelInitState.Downloading ||
                         modelInitState.value == ModelInitState.Pausing ||

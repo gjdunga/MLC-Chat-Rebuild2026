@@ -53,6 +53,9 @@ pass "16 KB ELF alignment + zipalign -P 16 ($(ls "$tmp"/lib/arm64-v8a | tr '\n' 
 # 6. R8 kept the JNI surface the native runtime calls into.
 unzip -q -o "$APK" 'classes*.dex' -d "$tmp"
 grep -qa "Lorg/apache/tvm/Function;" "$tmp"/classes*.dex || fail "org.apache.tvm.Function stripped by R8"
-pass "JNI classes present after R8"
+for cls in AppConfig ModelRecord ModelConfig ParamsConfig; do
+  grep -qa "Lai/mlc/mlcchat/$cls;" "$tmp"/classes*.dex || fail "Gson model ai.mlc.mlcchat.$cls renamed/stripped by R8"
+done
+pass "JNI classes and Gson config models present after R8"
 
 echo "All gates passed for $APK"

@@ -37,7 +37,9 @@ def test_apply_webgpu_subgroups_disabled_is_unchanged(target_kind, enable_subgro
     assert dict(updated.export()) == dict(target.export())
 
 
-@pytest.mark.parametrize("device", ["android", "android:adreno", "android:generic", "iphone:generic"])
+@pytest.mark.parametrize(
+    "device", ["android", "android:adreno", "android:generic", "iphone:generic"]
+)
 def test_detect_system_lib_prefix_keeps_explicit_prefix_on_mobile_presets(device):
     assert detect_system_lib_prefix(device, "my_model_", "qwen3", "q4f16_1") == "my_model_"
 

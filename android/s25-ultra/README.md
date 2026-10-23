@@ -24,9 +24,13 @@ libraries match the runtime packed into the APK.
 ## Requirements
 
 * x86_64 laptop with Ubuntu 24.04 (native or WSL2), or any OS with Docker.
-* ~60 GB free disk, 16 GB RAM recommended (8 GB works with `JOBS=2`).
-* Time on a 4-core laptop: compiler ~2 h (once), each model library ~10 min,
-  runtime ~15 min, APK ~5 min.
+* ~30 GB free disk per build with one locally converted 4B model (measured
+  peak ~25 GB: SDK/NDK 2.9 GB, venv 1.6 GB, build trees ~5 GB, Gradle cache
+  1.5 GB, bf16 checkpoint 7.6 GB until converted, MLC weights 2.2 GB).
+* 16 GB RAM recommended (conversion peaks below 8 GB; `JOBS=2` for TVM on 8 GB).
+* Measured on 4 cores: compiler ~1 h (once; reruns are incremental, ~3 min),
+  weight conversion ~7 min per 4B model, each model library ~1 min, runtime
+  cross-build ~10 min, APK ~3 min.
 
 ## Build
 
@@ -64,6 +68,46 @@ and `Huihui-Qwen3-4B-Instruct-2507-abliterated` (an uncensored finetune,
 converted locally and side-loaded). Add entries there; each gets its own
 library, since `rope_theta` and the context/prefill sizes are compiled into
 the kernels.
+
+## Upstream bugs fixed on this branch
+
+Upstream `main` (8978ea9) could not produce a working Android build. Found and
+fixed while building for the S25:
+
+| Where | Bug | Fix |
+|---|---|---|
+| `python/mlc_llm/support/auto_target.py` | Explicit `--system-lib-prefix` silently became `""` for preset devices (`android:adreno`), so multiple model libraries exported colliding symbols | Treat `android:*`/`iphone:*` presets as mobile; regression tests in `tests/python/support/test_auto_target.py` |
+| `android/mlc4j/src/cpp/tvm_runtime.h` | Unity build listed TVM files that were deleted or moved (`runtime/opencl/*` now `backend/opencl/runtime/*`) and missed `ffi/init_once.cc`, `vm/lm_support.cc`; logging override threw a removed exception type | List reconciled against TVM's own `tvm_runtime_objs`; links with `--no-undefined` |
+| `python/mlc_llm/interface/package.py` | `consumer-rules.pro` not copied into `dist/`, so R8 would strip JNI classes | Copied |
+| TVM `ir_visitor_with_analyzer.cc` (patch 0001) | Adreno `TextureFlatten` aborted: float Let bound into the integer analyzer | Bind only int/uint/bool |
+| TVM `attach_global_symbol.cc` (patch 0002) | Renaming callees under a lib prefix forced TIR calls to `PrimExpr` and threw | Return the call as `Expr` |
+| TVM `Logging.cmake` (patch 0003) | Referenced removed target `tvm_libinfo_objs` under custom logging (Android only) | Guard with `if(TARGET)` |
+
+TVM is a submodule (`mlc-ai/relax`), so its fixes live in `patches/` and are
+applied idempotently by `10_build_compiler.sh`. Each is small and suitable to
+send upstream.
+
+## Verification status
+
+Verified by a full build of this branch on Ubuntu 24.04 (x86_64, 4 cores):
+
+* `10` compiler from source; `20` conversion of the abliterated model
+  (`active_vocab_size` 151669 detected); `30` both Adreno libraries linked into
+  one archive with distinct prefixes, runtime cross-built with NDK r30.
+* `40` signed, R8-minified release APK, 29 MB; release lint: 0 errors, 1
+  cosmetic warning (logo vector path length).
+* `50` all gates pass: v2 signature with the release key, targetSdk 37,
+  permissions = INTERNET only, backup off, cleartext off, network security
+  config, not debuggable, 16 KB ELF + zip alignment, JNI and Gson classes kept.
+* `60` exercised against a simulated adb device (push, shard count check, swap).
+
+Not verified here (no phone, no Docker daemon in the build environment):
+
+* Running the APK on the S25 Ultra: OpenCL kernel execution on Adreno 830,
+  model load, generation speed. This is the first thing to check:
+  `adb logcat -s TVM_RUNTIME AndroidRuntime MLCChat`.
+* `docker build` of the `Dockerfile` (it runs the same `00_bootstrap_ubuntu.sh`
+  that was run natively).
 
 ## Security and permission changes vs upstream MLCChat
 
@@ -113,5 +157,6 @@ the kernels.
 | `Model lib ... is not supported` in app | app config | `model_lib` in app config not linked into the APK | Rerun 30 then 40 |
 | App closes on model load, logcat shows `clCreateContext`/OpenCL errors | runtime/driver | OpenCL not exposed to the app, or kernel too large for Adreno limits | Check `uses-native-library` in manifest; lower `prefill_chunk_size` |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | signing | Different key than the installed build | Uninstall first (deletes downloaded models), keep the keystore backed up |
-| Download fails "Refusing non-HTTPS" | app | Model URL is `http://` or a local path | Use `HF://` models, or `bundle_weight` + `60_install_to_phone.sh` |
+| Download fails "Refusing non-HTTPS" | app | Model URL is `http://` | Use `HF://` models, or `bundle_weight` + `60_install_to_phone.sh` |
+| Bundled model shows a failed download from `bundled.invalid` | install | Its weights were not side-loaded | Run `60_install_to_phone.sh` |
 | Strict dependency verification fails | build | A dependency changed or was tampered with | Investigate before regenerating the metadata |
