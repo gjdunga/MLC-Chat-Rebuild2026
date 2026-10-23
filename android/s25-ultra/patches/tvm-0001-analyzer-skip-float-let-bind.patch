@@ -1,0 +1,21 @@
+diff --git a/src/tirx/ir/ir_visitor_with_analyzer.cc b/src/tirx/ir/ir_visitor_with_analyzer.cc
+index dd65631..c5da911 100644
+--- a/src/tirx/ir/ir_visitor_with_analyzer.cc
++++ b/src/tirx/ir/ir_visitor_with_analyzer.cc
+@@ -123,7 +123,15 @@ ffi::Optional<VisitInterrupt> IRVisitorWithAnalyzer::Visit_(const CallNode* op)
+ 
+ ffi::Optional<VisitInterrupt> IRVisitorWithAnalyzer::Visit_(const prim::LetNode* op) {
+   TVM_FFI_S_VISIT_MAYBE_EARLY_RETURN(this->Visit(op->value));
+-  analyzer_->Bind(op->var, op->value);
++  // The analyzer's bound/interval/modular analyses are integer-only. Binding a
++  // float-typed Let (hit by the Adreno TextureFlatten pass when compiling
++  // Qwen3 q4f16_1) makes IntervalSetEvaluator build an IntImm of float type
++  // and abort.
++  if (auto ty = op->value->ty.as<PrimType>();
++      ty && ty.value().MatchesCode(DLDataTypeCode::kDLInt, DLDataTypeCode::kDLUInt,
++                                   DLDataTypeCode::kDLBool)) {
++    analyzer_->Bind(op->var, op->value);
++  }
+   return this->Visit(op->body);
+ }
+ 

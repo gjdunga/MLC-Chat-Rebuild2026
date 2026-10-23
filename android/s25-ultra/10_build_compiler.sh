@@ -4,7 +4,8 @@
 # runtime that 40_build_apk.sh packs into the APK, because both come from the
 # 3rdparty/tvm submodule commit checked out here.
 #
-# Time: ~40-70 min on a 4-8 core laptop (TVM with static LLVM dominates).
+# Time: ~1-2 h on a 4-core laptop the first time (TVM dominates); reruns are
+# incremental.
 # Disk: ~6 GB under $S25_HOME and the build dirs.
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
@@ -15,20 +16,35 @@ command -v llvm-config >/dev/null || { echo "ERROR: llvm-config not found (run 0
 
 git -C "$MLC_LLM_SOURCE_DIR" submodule update --init --recursive
 
+# Local fixes to the pinned TVM submodule (upstream bugs found while building
+# for the S25). Applied idempotently; each patch explains itself in its header.
+for patch in "$_S25_DIR"/patches/tvm-*.patch; do
+  [ -e "$patch" ] || continue
+  if git -C "$TVM_SOURCE_DIR" apply --reverse --check "$patch" 2>/dev/null; then
+    echo "patch already applied: $(basename "$patch")"
+  else
+    git -C "$TVM_SOURCE_DIR" apply "$patch"
+    echo "applied: $(basename "$patch")"
+  fi
+done
+
 mkdir -p "$S25_HOME"
 [ -x "$S25_VENV/bin/python" ] || "$S25_PYTHON" -m venv "$S25_VENV"
 PY="$S25_VENV/bin/python"
 "$PY" -m pip install -q --upgrade pip
 "$PY" -m pip install -q "scikit-build-core>=0.11" "setuptools-scm>=8" cmake ninja
 
-# 1. TVM FFI (pinned by the TVM submodule), then TVM itself with LLVM linked
-#    statically so the venv does not depend on the system LLVM at run time.
+# 1. TVM FFI (pinned by the TVM submodule), then TVM itself. The build is
+#    driven only by pip/scikit-build-core so there is a single configuration;
+#    running cmake by hand first makes pip reconfigure and rebuild everything.
+#    Build options come from build/config.cmake, which TVM's CMakeLists reads.
 "$PY" -m pip install -q "$TVM_SOURCE_DIR/3rdparty/tvm-ffi"
 
 TVM_BUILD="$TVM_SOURCE_DIR/build"
 mkdir -p "$TVM_BUILD"
-cp "$TVM_SOURCE_DIR/cmake/config.cmake" "$TVM_BUILD/config.cmake"
-cat >> "$TVM_BUILD/config.cmake" <<'CFG'
+cfg_new="$(mktemp)"
+cp "$TVM_SOURCE_DIR/cmake/config.cmake" "$cfg_new"
+cat >> "$cfg_new" <<'CFG'
 set(CMAKE_BUILD_TYPE Release)
 set(USE_LLVM "llvm-config --ignore-libllvm --link-static")
 set(HIDE_PRIVATE_SYMBOLS ON)
@@ -37,9 +53,10 @@ set(USE_METAL OFF)
 set(USE_VULKAN OFF)
 set(USE_OPENCL OFF)
 CFG
-cmake -S "$TVM_SOURCE_DIR" -B "$TVM_BUILD" -G Ninja
-cmake --build "$TVM_BUILD" --parallel "$JOBS"
-export TVM_LIBRARY_PATH="$TVM_BUILD"
+# Only touch config.cmake when it changes, so reruns stay incremental.
+cmp -s "$cfg_new" "$TVM_BUILD/config.cmake" || cp "$cfg_new" "$TVM_BUILD/config.cmake"
+rm -f "$cfg_new"
+export CMAKE_BUILD_PARALLEL_LEVEL="$JOBS"
 "$PY" -m pip install -q -e "$TVM_SOURCE_DIR" --no-build-isolation --config-settings=build-dir="$TVM_BUILD"
 
 # 2. mlc_llm C++ module + Python package. Only the deps that compile,
@@ -64,14 +81,16 @@ cmake -S "$MLC_LLM_SOURCE_DIR" -B "$MLC_BUILD" -G Ninja
 cmake --build "$MLC_BUILD" --parallel "$JOBS"
 "$PY" -m pip install -q --no-deps -e "$MLC_LLM_SOURCE_DIR/python"
 "$PY" -m pip install -q numpy ml_dtypes safetensors tqdm psutil shortuuid requests \
-  fastapi uvicorn pydantic tiktoken sentencepiece prompt_toolkit openai huggingface_hub
+  fastapi uvicorn pydantic tiktoken sentencepiece prompt_toolkit openai huggingface_hub \
+  transformers  # gen_config uses it to detect the active vocab size
 "$PY" -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
 
 # 3. Smoke test: both libraries load and report the same TVM commit.
 "$PY" - <<'PYCHK'
 import tvm, mlc_llm
 info = tvm.support.libinfo()
-print("TVM", tvm.__version__, "commit", info.get("GIT_COMMIT_HASH"), "LLVM", info.get("LLVM_VERSION"))
+assert info.get("USE_LLVM") not in (None, "OFF"), "TVM built without LLVM"
+print("TVM", tvm.__version__, "USE_LLVM", info.get("USE_LLVM"))
 print("mlc_llm", mlc_llm.__file__)
 PYCHK
 echo "Compiler ready in $S25_VENV"
